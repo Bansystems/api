@@ -5,16 +5,123 @@ App::uses('ApiError', 'Error');
 App::uses('LackParametersException', 'Error');
 App::uses('Debugger', 'Utility');
 
+/**
+ * Class ApiComponent
+ */
 class ApiComponent extends Component {
 
+/**
+ * アクションの最終レスポンスを格納
+ *
+ * @var array
+ */
 	protected $_response = [];
+
+/**
+ * 現在のコントローラー
+ *
+ * @var Controller
+ */
 	public $controller;
+
+/**
+ * リクエストパラメーターとモデルデータ形式のマッピング
+ *
+ * ### 例
+ *
+ * {{{
+ * $this->Api->recordMap = [
+ *     'User' => [
+ *         'id',
+ *         'name',
+ *     ];
+ * ];
+ * }}}
+ *
+ * とすると、
+ *
+ * {{{
+ * // $this->request->data = ['id' => '1', 'name' => 'Hoge'];
+ * $params = $this->Api->collectParamsFromMap();
+ * // $params = [
+ * //     'id' => '1',
+ * //     'name' => 'Hoge',
+ * // ];
+ * $record = $this->Api->paramsToRecord($params);
+ * // $record = [
+ * //     'User' => [
+ * //         'id' => '1',
+ * //         'name' => 'Hoge',
+ * //     ],
+ * // ];
+ * }}}
+ *
+ * となります。
+ *
+ * {{{
+ * $params = $this->Api->recordToParams($this->User->find());
+ * // $params = [
+ * //     'id' => '1',
+ * //     'name' => 'Hoge',
+ * // ];
+ * }}}
+ *
+ * のように、逆変換もできます。
+ * @var array
+ */
 	public $recordMap = [];
+
+/**
+ * Controller::modelClassに該当します。
+ * デフォルトで使うモデルを指定します。
+ *
+ * @var string
+ */
 	public $useModel = null;
 
+/**
+ * リクエストのAPIバージョン
+ *
+ * @var string
+ */
 	public $version;
-	const RECENT_VERSION = '1.0';
 
+/**
+ * 現在のAPIバージョン
+ *
+ * @var string
+ */
+	public $recentVersion = '1.0';
+
+/**
+ * バージョン未指定の時のAPIバージョン
+ *
+ * @var string
+ */
+	public $currentVersion = '1.0';
+
+/**
+ * DBログをデバッグ用にレスポンスに含めるか
+ * null | false: しない
+ * n(integer) >= 1: Configure('debug') >= n の時含める
+ *
+ * @var integer
+ */
+	public $logDb = false;
+
+/**
+ * 例外レンダラの設定
+ *
+ * @var string
+ */
+	public $exceptionRenderer = 'ApiExceptionRenderer';
+
+/**
+ * 現在のリクエストがAPIかどうか
+ *
+ * @param CakeRequest $request
+ * @return bool
+ */
 	public function isApiRequest(CakeRequest $request = null) {
 		if ($request === null) {
 			$request = $this->controller->request;
@@ -23,6 +130,12 @@ class ApiComponent extends Component {
 		return !empty($request->params['api']);
 	}
 
+/**
+ * 初期化
+ *
+ * @param Controller $controller
+ * @return void
+ */
 	public function initialize(Controller $controller) {
 		$this->controller = $controller;
 		if ($this->isApiRequest($controller->request)) {
@@ -35,13 +148,20 @@ class ApiComponent extends Component {
 		return parent::initialize($controller);
 	}
 
+/**
+ * beforeRender callback
+ * レスポンスの描画を行います。
+ *
+ * @param Controller $controller
+ * @return void
+ */
 	public function beforeRender(Controller $controller) {
 		if ($this->isApiRequest($controller->request)) {
 			if (empty($this->_response)) {
 				$this->failure(ApiError::NOT_IMPLEMENTED, 501);
 			}
-			if (Configure::read('debug') >= 2) {
-				// $this->setResponse('dbLog', ConnectionManager::getDataSource('default')->getLog());
+			if ($this->logDb && Configure::read('debug') >= $this->logDb) {
+				$this->setResponse('dbLog', ConnectionManager::getDataSource('default')->getLog());
 			}
 			$response = $this->_response;
 			$controller->response->statusCode($response['code']);
@@ -55,10 +175,26 @@ class ApiComponent extends Component {
 		return parent::beforeRender($controller);
 	}
 
+/**
+ * API用の例外レンダラを設定します
+ *
+ * @param Controller $controller
+ * @return void
+ */
 	protected function _setExceptionHandler(Controller $controller) {
-		Configure::write('Exception.renderer', 'ApiExceptionRenderer');
+		if ($this->exceptionRenderer) {
+			Configure::write('Exception.renderer', $this->exceptionRenderer);
+		}
 	}
 
+/**
+ * API用のauthenticateクラスを指定するために、FormAuthenticateを上書きします。
+ * 認証が失敗した時ログインページへリダイレクトするのを防ぎます。
+ * その他のAuthenticateクラスには現在対応していません。
+ *
+ * @param Controller $controller
+ * @return void
+ */
 	protected function _setAuthenticate(Controller $controller) {
 		if (isset($controller->Auth->authenticate['Form'])) {
 			$authenticate = &$controller->Auth->authenticate;
@@ -69,17 +205,92 @@ class ApiComponent extends Component {
 		unset($authenticate['Form']);
 	}
 
+/**
+ * バージョンコントロールをします。
+ * クライアントはヘッダにAPIVersionを含めることで使用するバージョンを指定できます。
+ * 指定されなかった場合、ApiComponent::$recetnVersionが使用されます。
+ *
+ * @param Controller $controller
+ * @return void
+ */
 	protected function _handleVersion($controller) {
-		$this->version = static::RECENT_VERSION;
+		$modelConfig = ClassRegistry::config('Model');
+		if (!empty($modelConfig['testing'])) {
+			$this->version = $this->recentVersion;
+			if ($version = Configure::read('TEST_API_VERSION')) {
+				$this->version = $version;
+			}
+			return;
+		}
+
+		$this->version = $this->currentVersion;
 		if ($version = $controller->request->header('APIVersion')) {
 			$this->version = $version;
 		}
 	}
 
+/**
+ * バージョン比較をします。
+ * PHPファンクションversion_compareへのエイリアスです。
+ *
+ * @param string $compare
+ * @param string $version
+ * @return mixed compared value
+ */
+	public function compareVersion($compare, $version = null) {
+		if ($version === null) {
+			$version = $compare;
+			$compare = null;
+		}
+		return version_compare($this->version, $version, $compare);
+	}
+
+/**
+ * 必須バージョンを指定します。
+ * サポートされない場合、例外を投げます。
+ *
+ * @param string $version
+ * @return void
+ * @throws ForbiddenException
+ */
+	public function requireVersion($version) {
+		if (!$this->supportVersion($version)) {
+			throw new ForbiddenException(sprintf('This API requires version %s but spcified version was %s', $version, $this->version));
+		}
+	}
+
+/**
+ * バージョンがサポートされているかどうかを返します。
+ *
+ * @param string $version
+ * @return bool
+ */
+	public function supportVersion($version) {
+		return $this->compareVersion('>=', $version);
+	}
+
+/**
+ * 必須リクエストパラメーターを指定します。
+ * 返り値はパラメータ値です。
+ * 必須パラメータが指定されていない場合、LackParametersExceptionが投げられます。
+ *
+ * @param string $paramName
+ * @throws LackParametersException
+ * @return mixed param value
+ */
 	public function requireParam($paramName) {
 		return $this->requireParams([$paramName])[$paramName];
 	}
 
+/**
+ * 必須リクエストパラメーターを複数指定します。
+ * 返り値はパラメータ名：パラメータ値のハッシュです。
+ * 必須パラメータが指定されていない場合、LackParametersExceptionが投げられます。
+ *
+ * @param array $keys
+ * @throws LackParametersException
+ * @return array param values
+ */
 	public function requireParams(array $keys) {
 		$params = $this->collectParams($keys);
 		$noProvidedKeys = array_diff($keys, array_keys($params));
@@ -90,6 +301,13 @@ class ApiComponent extends Component {
 		return $params;
 	}
 
+/**
+ * リクエストパラメーターを収集します。
+ * 返り値はパラメータ名：パラメータ値のハッシュです。
+ *
+ * @param array $keys
+ * @return array param values
+ */
 	public function collectParams(array $keys = array()) {
 		$request = $this->controller->request;
 		if ($request->is('get')) {
@@ -105,11 +323,24 @@ class ApiComponent extends Component {
 		return $params;
 	}
 
+/**
+ * リクエストパラメーターを返します。
+ * 返り値はパラメータ値で、なければnullを返します。
+ *
+ * @param string $paramName
+ * @return mixed param value
+ */
 	public function collectParam($paramName) {
 		$params = $this->collectParams([$paramName]);
 		return array_key_exists($paramName, $params) ? $params[$paramName] : null;
 	}
 
+/**
+ * ApiComponent::$recordMapを走査するためのヘルパーメソッドです。
+ *
+ * @param callable $callback
+ * @return void
+ */
 	protected function _walkMap(callable $callback) {
 		foreach ($this->recordMap as $alias => $map) {
 			$map = Hash::normalize($map);
@@ -127,6 +358,17 @@ class ApiComponent extends Component {
 		}
 	}
 
+/**
+ * ApiComponent::$recordMapから、リクエストパラメータ名の配列を返すヘルパーメソッドです。
+ *
+ * 設定
+ *
+ * - `includes` 返り値に含めるパラメータ名を指定する配列
+ * - `excludes` 返り値に含めないパラメータ名を指定する配列
+ *
+ * @param array $options
+ * @return void
+ */
 	protected function _mapKeys(array $options) {
 		$options += [
 			'includes' => false,
@@ -151,16 +393,44 @@ class ApiComponent extends Component {
 		return $keys;
 	}
 
+/**
+ * ApiComponent::$recordMapから、必須リクエストパラメータを取得します。
+ *
+ * 設定
+ *
+ * - `includes` 返り値に含めるパラメータ名を指定する配列
+ * - `excludes` 返り値に含めないパラメータ名を指定する配列
+ *
+ * @param array $options
+ * @return void
+ */
 	public function requireParamsFromMap($options = []) {
 		$keys = $this->_mapKeys($options);
 		return $this->requireParams($keys);
 	}
 
+/**
+ * ApiComponent::$recordMapから、パラメータを取得します。
+ *
+ * 設定
+ *
+ * - `includes` 返り値に含めるパラメータ名を指定する配列
+ * - `excludes` 返り値に含めないパラメータ名を指定する配列
+ *
+ * @param array $options
+ * @return void
+ */
 	public function collectParamsFromMap($options = []) {
 		$keys = $this->_mapKeys($options);
 		return $this->collectParams($keys);
 	}
 
+/**
+ * habtm用の配列を期待するパラメータ値を、配列に整形します。
+ *
+ * @param mixed $values
+ * @return array normalized array
+ */
 	public function normalizeParamForArray($values) {
 		$values = $values === '' ? [] : (array)$values;
 		if ($values === ['']) {
@@ -169,6 +439,12 @@ class ApiComponent extends Component {
 		return $values;
 	}
 
+/**
+ * 取得したパラメータをレコード形式に整形します。
+ *
+ * @param array $params
+ * @return array record
+ */
 	public function paramsToRecord(array $params) {
 		$record = [];
 		$this->_walkMap(function($paramsField, $alias, $recordField) use($params, &$record) {
@@ -197,6 +473,12 @@ class ApiComponent extends Component {
 		return $record;
 	}
 
+/**
+ * find()などで取得したレコードをレスポンスパラメータ形式に整形します。
+ *
+ * @param array $record
+ * @return array params
+ */
 	public function recordToParams(array $record) {
 		$params = [];
 		$this->_walkMap(function($paramsField, $alias, $recordField, $wrap) use(&$params, $record) {
@@ -230,6 +512,19 @@ class ApiComponent extends Component {
 		return $params;
 	}
 
+/**
+ * 一般的な保存処理をまとめています。
+ * 保存処理をし、失敗すればバリデーションエラーを集めて返します。
+ * バリデーションエラーを集めるためにはApiComponent::recordMapの設定が必要になります。
+ *
+ * 設定：
+ * - successCallback: 保存が成功した場合、レスポンスとして返すデータを返り値とするコールバックを指定します。
+ * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallcbackを見てください。
+ *
+ * @param mixed $data
+ * @param array $options
+ * @return mixed result of save process
+ */
 	public function processSaveRecord($data, $options = []) {
 		$successCallback = Hash::get($options, 'successCallback');
 		unset($options['successCallback']);
@@ -244,11 +539,24 @@ class ApiComponent extends Component {
 		return $result;
 	}
 
+/**
+ * バリデーションエラーをかき集めてAPIの応答をバリデーションエラーにします。
+ *
+ * @param string $model
+ * @return array params
+ */
 	public function processValidationErrors($model = null) {
 		$this->raiseValidationErrors();
 		$this->setValidationErrors($model);
 	}
 
+/**
+ * APIの応答をバリデーションエラーにします。
+ * $validationErrorsが指定された場合、レスポンスにそれを直接含めます。
+ *
+ * @param array $validationErrors
+ * @return array params
+ */
 	public function raiseValidationErrors($validationErrors = null) {
 		$this->failure(ApiError::VALIDATION_ERROR, 400);
 		if ($validationErrors !== null) {
@@ -256,6 +564,18 @@ class ApiComponent extends Component {
 		}
 	}
 
+/**
+ * 一般的な保存処理です。
+ * リクエストパラメータでvalidate_onlyに真の値が指定されている場合、バリデーションのみを行います。
+ *
+ * 設定：
+ * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallcbackを見てください。
+ *
+ * @param mixed $data
+ * @param array $options
+ * @return mixed result of save process
+ * @see ApiComponent::processSaveRecord()
+ */
 	public function saveRecord($data, array $options = []) {
 		$options += [
 			'saveCallback' => [$this, '_defaultSaveCallcback'],
@@ -269,6 +589,25 @@ class ApiComponent extends Component {
 		return $saveCallback($data, $options);
 	}
 
+/**
+ * リクエストパラメータの値を変換し、真偽値として返します。
+ * リクエストパラメータで、真偽値を要求する場合多様な指定を可能にします。
+ * 配列が指定された場合、配列の要素各々に対して変換をします。
+ *
+ * - trueとして判定されるもの
+ *   - 'true'
+ *   - 'yes'
+ *   - 1
+ *
+ * - falseとして判定されるもの
+ *   - 'false'
+ *   - 'no'
+ *   - 0
+ *
+ * @param mixed $value array or string
+ * @param array $options
+ * @return mixed bool or array of bool
+ */
 	public static function convertBoolean($value) {
 		if (is_array($value)) {
 			foreach ($value as $key => $val) {
@@ -299,23 +638,52 @@ class ApiComponent extends Component {
 		return $value;
 	}
 
+/**
+ * デフォルトのモデルを返すヘルパーメソッドです。
+ *
+ * @return Model
+ * @see Controller::$modelClass
+ * @see ApiComponent::$useModel
+ */
 	protected function _getDefaultModel() {
 		$model = $this->useModel ?: $this->controller->modelClass;
 		return ClassRegistry::init($model);
 	}
 
+/**
+ * デフォルトの保存処理です。
+ *
+ * @param mixed $data
+ * @param array $options
+ * @return mixed bool
+ * @see ApiComponent::processSaveRecord()
+ */
 	protected function _defaultSaveCallcback($data, array $options) {
 		$Model = $this->_getDefaultModel();
 		$result = $Model->saveAll($data, $options);
 		return $result === true || (is_array($result) && !in_array(false, $result, true));
 	}
 
+/**
+ * ApiComponent::$recordMapを元にバリデーションエラーを取得し、レスポンスに含めます。
+ *
+ * @param string $model
+ * @return void
+ * @see ApiComponent::$recordMap
+ */
 	public function setValidationErrors($model = null) {
 		$validationErrors = $this->collectValidationErrors($model);
 		$validationErrors = $this->recordToParams($validationErrors);
 		$this->setResponse(compact('validationErrors'));
 	}
 
+/**
+ * ApiComponent::$recordMapを元にバリデーションエラーを取得し、それを返します。
+ *
+ * @param string $model
+ * @return array validationErrors
+ * @see ApiComponent::$recordMap
+ */
 	public function collectValidationErrors($model = null) {
 		if ($model !== null) {
 			$Model = ClassRegistry::init($model);
@@ -325,6 +693,14 @@ class ApiComponent extends Component {
 		return $this->_collectValidationErrors($Model);
 	}
 
+/**
+ * collectValidationErrorsのヘルパーメソッドです。
+ * 再帰的にバリデーションエラーを取得します。
+ *
+ * @param Model $Model
+ * @return array validationErrors
+ * @see ApiComponent::$recordMap
+ */
 	protected function _collectValidationErrors($Model) {
 		$validationErrors = [];
 		foreach ($Model->validationErrors as $field => $errors) {
@@ -337,6 +713,14 @@ class ApiComponent extends Component {
 		return $validationErrors;
 	}
 
+/**
+ * レスポンスをセットします。
+ * Model::set(), Controller::set()のような挙動をします。
+ *
+ * @param mixed $vars
+ * @param mixed $value
+ * @return void
+ */
 	public function setResponse($vars, $value = null) {
 		if (!is_array($vars)) {
 			$vars = [$vars => $value];
@@ -344,6 +728,13 @@ class ApiComponent extends Component {
 		$this->_response = Hash::merge($this->_response, $vars);
 	}
 
+/**
+ * レスポンスを成功状態にします。
+ * $dataを指定するとレスポンスに'data'パラメータとしてセットします。
+ *
+ * @param mixed $data
+ * @return void
+ */
 	public function success($data = null) {
 		$this->setResponse([
 			'success' => true,
@@ -354,6 +745,15 @@ class ApiComponent extends Component {
 		}
 	}
 
+/**
+ * レスポンスを失敗状態にします。
+ * エラーコード、HTTPステータスを指定できます。
+ *
+ * @param string $errorCode
+ * @param mixed $httpStatus
+ * @return void
+ * @see ApiError
+ */
 	public function failure($errorCode, $httpStatus = 500) {
 		$this->setResponse([
 			'success' => false,
@@ -363,6 +763,12 @@ class ApiComponent extends Component {
 		]);
 	}
 
+/**
+ * 設定済みのレスポンスを取得します。
+ *
+ * @param string $key
+ * @return mixed response
+ */
 	public function getResponse($key = null) {
 		if ($key !== null) {
 			return Hash::get($this->_response, $key);

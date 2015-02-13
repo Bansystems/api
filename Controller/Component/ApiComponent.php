@@ -1,8 +1,8 @@
 <?php
 
 App::uses('Component', 'Controller');
-App::uses('ApiError', 'Error');
-App::uses('LackParametersException', 'Error');
+App::uses('ApiError', 'Api.Error');
+App::uses('LackParametersException', 'Api.Error');
 App::uses('Debugger', 'Utility');
 
 /**
@@ -110,11 +110,38 @@ class ApiComponent extends Component {
 	public $logDb = false;
 
 /**
+ * JSONレスポンス上でデバッグする際、不要なHTMLを抑制するためデバッガーの出力
+ * タイプを変更する
+ *
+ * @var string
+ */
+	public $setDebuggerTypeAs = 'txt';
+
+/**
  * 例外レンダラの設定
  *
  * @var string
  */
 	public $exceptionRenderer = 'ApiExceptionRenderer';
+
+/**
+ * 認証ハンドラの設定
+ *
+ * @var string
+ */
+	public $setAuthenticate = 'Api';
+
+/**
+ * 初期化時設定メソッドの指定
+ *
+ * @var array
+ */
+	public $configMethods = [
+		'_setDebuggerTypeAs' => true,
+		'_setExceptionHandler' => true,
+		'_setAuthenticate' => true,
+		'_handleVersion' => true,
+	];
 
 /**
  * 現在のリクエストがAPIかどうか
@@ -139,10 +166,11 @@ class ApiComponent extends Component {
 	public function initialize(Controller $controller) {
 		$this->controller = $controller;
 		if ($this->isApiRequest($controller->request)) {
-			Debugger::outputAs('txt');
-			$this->_setExceptionHandler($controller);
-			$this->_setAuthenticate($controller);
-			$this->_handleVersion($controller);
+			foreach (Hash::normalize($this->configMethods) as $method => $enabled) {
+				if ($enabled) {
+					$this->$method($controller);
+				}
+			}
 		}
 
 		return parent::initialize($controller);
@@ -161,9 +189,9 @@ class ApiComponent extends Component {
 				$this->failure(ApiError::NOT_IMPLEMENTED, 501);
 			}
 			if ($this->logDb && Configure::read('debug') >= $this->logDb) {
-				$this->setResponse('dbLog', ConnectionManager::getDataSource('default')->getLog());
+				$this->setResponse('dbLog', $this->_getDbLog());
 			}
-			$response = $this->_response;
+			$response = $this->getResponse();
 			$controller->response->statusCode($response['code']);
 			$controller->set(compact('response'));
 			$controller->set('_serialize', 'response');
@@ -173,6 +201,27 @@ class ApiComponent extends Component {
 		}
 
 		return parent::beforeRender($controller);
+	}
+
+/**
+ * DBログを返すヘルパーメソッド
+ *
+ * @return array log of database
+ */
+	protected function _getDbLog() {
+		return ConnectionManager::getDataSource('default')->getLog();
+	}
+
+/**
+ * Debuggerの出力タイプを変更する
+ *
+ * @param Controller $controller
+ * @return void
+ */
+	protected function _setDebuggerTypeAs(Controller $controller) {
+		if ($this->setDebuggerTypeAs) {
+			Debugger::outputAs($this->setDebuggerTypeAs);
+		}
 	}
 
 /**
@@ -190,19 +239,21 @@ class ApiComponent extends Component {
 /**
  * API用のauthenticateクラスを指定するために、FormAuthenticateを上書きします。
  * 認証が失敗した時ログインページへリダイレクトするのを防ぎます。
- * その他のAuthenticateクラスには現在対応していません。
+ * Form以外のAuthenticateクラスには現在対応していません。
  *
  * @param Controller $controller
  * @return void
  */
 	protected function _setAuthenticate(Controller $controller) {
-		if (isset($controller->Auth->authenticate['Form'])) {
-			$authenticate = &$controller->Auth->authenticate;
-		} else {
-			$authenticate = &$controller->components['Auth']['authenticate'];
+		if ($this->setAuthenticate) {
+			if (isset($controller->Auth->authenticate['Form'])) {
+				$authenticate = &$controller->Auth->authenticate;
+			} else {
+				$authenticate = &$controller->components['Auth']['authenticate'];
+			}
+			$authenticate[$this->setAuthenticate] = $authenticate['Form'];
+			unset($authenticate['Form']);
 		}
-		$authenticate['Api'] = $authenticate['Form'];
-		unset($authenticate['Form']);
 	}
 
 /**
@@ -242,7 +293,12 @@ class ApiComponent extends Component {
 			$version = $compare;
 			$compare = null;
 		}
-		return version_compare($this->version, $version, $compare);
+
+		$args = [$this->version, $version];
+		if ($compare !== null) {
+			$args[] = $compare;
+		}
+		return call_user_func_array('version_compare', $args);
 	}
 
 /**
@@ -457,7 +513,7 @@ class ApiComponent extends Component {
 					if (!empty($paramsField)) {
 						$field = $paramsField[0];
 						foreach ($values as $key => $val) {
-							$record[$alias][$key][$field] = $value;
+							$record[$alias][$key][$field] = $val;
 						}
 					} else {
 						$record[$alias] = $values;
@@ -519,7 +575,7 @@ class ApiComponent extends Component {
  *
  * 設定：
  * - successCallback: 保存が成功した場合、レスポンスとして返すデータを返り値とするコールバックを指定します。
- * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallcbackを見てください。
+ * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallbackを見てください。
  *
  * @param mixed $data
  * @param array $options
@@ -569,7 +625,7 @@ class ApiComponent extends Component {
  * リクエストパラメータでvalidate_onlyに真の値が指定されている場合、バリデーションのみを行います。
  *
  * 設定：
- * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallcbackを見てください。
+ * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallbackを見てください。
  *
  * @param mixed $data
  * @param array $options
@@ -578,7 +634,7 @@ class ApiComponent extends Component {
  */
 	public function saveRecord($data, array $options = []) {
 		$options += [
-			'saveCallback' => [$this, '_defaultSaveCallcback'],
+			'saveCallback' => [$this, '_defaultSaveCallback'],
 		];
 		$saveCallback = $options['saveCallback'];
 		unset($options['saveCallback']);
@@ -618,18 +674,22 @@ class ApiComponent extends Component {
 
 		$map = [
 			true => [
+				true,
 				'true',
 				'yes',
 				'1',
+				1,
 			],
 			false => [
+				false,
 				'false',
 				'no',
 				'0',
+				0,
 			],
 		];
 		foreach ($map as $bool => $values) {
-			if (in_array($value, $values)) {
+			if (in_array($value, $values, true)) {
 				$value = (bool)$bool;
 				break;
 			}
@@ -658,7 +718,7 @@ class ApiComponent extends Component {
  * @return mixed bool
  * @see ApiComponent::processSaveRecord()
  */
-	protected function _defaultSaveCallcback($data, array $options) {
+	protected function _defaultSaveCallback($data, array $options) {
 		$Model = $this->_getDefaultModel();
 		$result = $Model->saveAll($data, $options);
 		return $result === true || (is_array($result) && !in_array(false, $result, true));
@@ -706,8 +766,9 @@ class ApiComponent extends Component {
 		foreach ($Model->validationErrors as $field => $errors) {
 			if (isset($Model->$field) && $Model->$field instanceof Model) {
 				$validationErrors = array_merge($validationErrors, $this->_collectValidationErrors($Model->$field));
+			} else {
+				$validationErrors[$Model->alias][$field] = $errors;
 			}
-			$validationErrors[$Model->alias][$field] = $errors;
 		}
 
 		return $validationErrors;

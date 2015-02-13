@@ -513,7 +513,7 @@ class ApiComponent extends Component {
 					if (!empty($paramsField)) {
 						$field = $paramsField[0];
 						foreach ($values as $key => $val) {
-							$record[$alias][$key][$field] = $value;
+							$record[$alias][$key][$field] = $val;
 						}
 					} else {
 						$record[$alias] = $values;
@@ -575,7 +575,7 @@ class ApiComponent extends Component {
  *
  * 設定：
  * - successCallback: 保存が成功した場合、レスポンスとして返すデータを返り値とするコールバックを指定します。
- * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallcbackを見てください。
+ * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallbackを見てください。
  *
  * @param mixed $data
  * @param array $options
@@ -625,7 +625,7 @@ class ApiComponent extends Component {
  * リクエストパラメータでvalidate_onlyに真の値が指定されている場合、バリデーションのみを行います。
  *
  * 設定：
- * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallcbackを見てください。
+ * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallbackを見てください。
  *
  * @param mixed $data
  * @param array $options
@@ -634,7 +634,7 @@ class ApiComponent extends Component {
  */
 	public function saveRecord($data, array $options = []) {
 		$options += [
-			'saveCallback' => [$this, '_defaultSaveCallcback'],
+			'saveCallback' => [$this, '_defaultSaveCallback'],
 		];
 		$saveCallback = $options['saveCallback'];
 		unset($options['saveCallback']);
@@ -674,18 +674,22 @@ class ApiComponent extends Component {
 
 		$map = [
 			true => [
+				true,
 				'true',
 				'yes',
 				'1',
+				1,
 			],
 			false => [
+				false,
 				'false',
 				'no',
 				'0',
+				0,
 			],
 		];
 		foreach ($map as $bool => $values) {
-			if (in_array($value, $values)) {
+			if (in_array($value, $values, true)) {
 				$value = (bool)$bool;
 				break;
 			}
@@ -714,7 +718,7 @@ class ApiComponent extends Component {
  * @return mixed bool
  * @see ApiComponent::processSaveRecord()
  */
-	protected function _defaultSaveCallcback($data, array $options) {
+	protected function _defaultSaveCallback($data, array $options) {
 		$Model = $this->_getDefaultModel();
 		$result = $Model->saveAll($data, $options);
 		return $result === true || (is_array($result) && !in_array(false, $result, true));
@@ -762,8 +766,9 @@ class ApiComponent extends Component {
 		foreach ($Model->validationErrors as $field => $errors) {
 			if (isset($Model->$field) && $Model->$field instanceof Model) {
 				$validationErrors = array_merge($validationErrors, $this->_collectValidationErrors($Model->$field));
+			} else {
+				$validationErrors[$Model->alias][$field] = $errors;
 			}
-			$validationErrors[$Model->alias][$field] = $errors;
 		}
 
 		return $validationErrors;

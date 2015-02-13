@@ -170,6 +170,5 @@ Class CommentsController extends AppController {
 
 - 汎用的な作りにはなっていません。
 - 既存のアプリケーションに適用するのは困難です
-- テストはまだ書かれていません
 - ドキュメント化されていない不完全な機能が一部あります(habtm、hasMany対応など）
 	- 通常使用には問題ありません

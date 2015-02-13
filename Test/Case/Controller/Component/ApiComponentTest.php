@@ -510,7 +510,7 @@ class ApiComponentTest extends CakeTestCase {
 			$this->assertSame(null, $wrap);
 		}]);
 
-		// _wrap
+		// Wrap
 		$this->Api->recordMap = [
 			'User' => [
 				'_wrap' => 'user',
@@ -530,7 +530,7 @@ class ApiComponentTest extends CakeTestCase {
 			$this->assertSame('user', $wrap);
 		}]);
 
-		// alias
+		// Alias
 		$this->Api->recordMap = [
 			'User' => [
 				'id' => 'user_id',
@@ -554,7 +554,7 @@ class ApiComponentTest extends CakeTestCase {
 			$this->assertSame(null, $wrap);
 		}]);
 
-		// array map
+		// Array map
 		$this->Api->recordMap = [
 			'User' => [
 				'id' => [],
@@ -593,7 +593,7 @@ class ApiComponentTest extends CakeTestCase {
 			'email',
 		], $result);
 
-		// alias
+		// Alias
 		$this->Api->recordMap = [
 			'User' => [
 				'id' => 'user_id',
@@ -609,7 +609,7 @@ class ApiComponentTest extends CakeTestCase {
 			'user_email',
 		], $result);
 
-		// array map
+		// Array map
 		$this->Api->recordMap = [
 			'User' => [
 				'id' => [],
@@ -746,6 +746,676 @@ class ApiComponentTest extends CakeTestCase {
 			'id' => 1,
 			'name' => 'hiromi',
 		], $result);
+	}
+
+	/**
+	 * test normalizeParamForArray() method
+	 *
+	 * @test
+	 */
+	public function normalizeParamForArray() {
+		$this->generateComponent();
+		$this->assertSame([], $this->Api->normalizeParamForArray(''));
+		$this->assertSame([], $this->Api->normalizeParamForArray(['']));
+		$this->assertSame(['string'], $this->Api->normalizeParamForArray('string'));
+		$this->assertSame(['array'], $this->Api->normalizeParamForArray(['array']));
+	}
+
+	/**
+	 * test paramsToRecord() method
+	 *
+	 * @test
+	 */
+	public function paramsToRecord() {
+		$this->generateComponent();
+
+		// No map
+		$result = $this->Api->paramsToRecord([
+			'id' => 1,
+			'name' => 'hiromi',
+			'email' => 'hiromi2424@exmaple.com',
+		]);
+		$this->assertSame([], $result);
+
+		// Normal
+		$this->Api->recordMap = [
+			'User' => [
+				'id',
+				'name',
+				'email',
+			],
+		];
+		$result = $this->Api->paramsToRecord([
+			'id' => 1,
+			'name' => 'hiromi',
+			'email' => 'hiromi2424@exmaple.com',
+		]);
+		$this->assertSame([
+			'User' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+		], $result);
+
+		// Alias
+		$this->Api->recordMap = [
+			'User' => [
+				'id' => 'user_id',
+				'name' => 'user_name',
+				'email' => 'user_email',
+			],
+		];
+		$result = $this->Api->paramsToRecord([
+			'user_id' => 1,
+			'user_name' => 'hiromi',
+			'user_email' => 'hiromi2424@exmaple.com',
+		]);
+		$this->assertSame([
+			'User' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+		], $result);
+
+		// Array map(assumes hasAndBelongsToMany)
+		$this->Api->recordMap = [
+			'User' => [
+				'id',
+				'name',
+				'email',
+			],
+			'Like' => [
+				'likes' => [],
+			],
+		];
+		$params = [
+			'id' => 1,
+			'name' => 'hiromi',
+			'email' => 'hiromi2424@exmaple.com',
+			'likes' => [1, 2, 3],
+		];
+		$result = $this->Api->paramsToRecord($params);
+		$this->assertSame([
+			'User' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+			'Like' => [1, 2, 3],
+		], $result);
+
+		// Array map with field(assumes hasMany)
+		$this->Api->recordMap['Like'] = [
+			'likes' => ['toy_id'],
+		];
+		$result = $this->Api->paramsToRecord($params);
+		$this->assertSame([
+			'User' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+			'Like' => [
+				['toy_id' => 1],
+				['toy_id' => 2],
+				['toy_id' => 3],
+			],
+		], $result);
+
+		$this->Api->recordMap['Like'] = [
+			'' => [],
+		];
+		try {
+			$this->Api->paramsToRecord($params);
+			$this->fail('Expected DomainException was not thrown');
+		} catch (PHPUnit_Framework_AssertionFailedError $e) {
+			throw $e;
+		} catch (Exception $e) {
+			$this->assertInstanceOf('DomainException', $e);
+		}
+	}
+
+	/**
+	 * test recordToParams() method
+	 *
+	 * @test
+	 */
+	public function recordToParams() {
+		$this->generateComponent();
+
+		$record = [
+			'User' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+		];
+		// No map
+		$result = $this->Api->recordToParams($record);
+		$this->assertSame([], $result);
+
+		// Normal
+		$this->Api->recordMap = [
+			'User' => [
+				'id',
+				'name',
+				'email',
+			],
+		];
+		$result = $this->Api->recordToParams($record);
+		$this->assertSame([
+			'id' => 1,
+			'name' => 'hiromi',
+			'email' => 'hiromi2424@exmaple.com',
+		], $result);
+
+		// Wrap
+		$this->Api->recordMap['User']['_wrap'] = 'user';
+		$result = $this->Api->recordToParams($record);
+		$this->assertSame([
+			'user' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+		], $result);
+
+		// Alias
+		$this->Api->recordMap = [
+			'User' => [
+				'id' => 'user_id',
+				'name' => 'user_name',
+				'email' => 'user_email',
+			],
+		];
+		$result = $this->Api->recordToParams($record);
+		$this->assertSame([
+			'user_id' => 1,
+			'user_name' => 'hiromi',
+			'user_email' => 'hiromi2424@exmaple.com',
+		], $result);
+
+		// Array map(assumes hasAndBelongsToMany)
+		$this->Api->recordMap = [
+			'User' => [
+				'id',
+				'name',
+				'email',
+			],
+			'Like' => [
+				'likes' => [],
+			],
+		];
+		$record = [
+			'User' => [
+				'id' => 1,
+				'name' => 'hiromi',
+				'email' => 'hiromi2424@exmaple.com',
+			],
+			'Like' => [
+				['id' => 1, 'toy_id' => 4],
+				['id' => 2, 'toy_id' => 5],
+				['id' => 3, 'toy_id' => 6],
+			],
+		];
+		$result = $this->Api->recordToParams($record);
+		$this->assertSame([
+			'id' => 1,
+			'name' => 'hiromi',
+			'email' => 'hiromi2424@exmaple.com',
+			'likes' => [
+				['id' => 1, 'toy_id' => 4],
+				['id' => 2, 'toy_id' => 5],
+				['id' => 3, 'toy_id' => 6],
+			],
+		], $result);
+
+		// Array map with field(assumes hasMany)
+		$this->Api->recordMap['Like'] = [
+			'likes' => ['toy_id'],
+		];
+		$result = $this->Api->recordToParams($record);
+		$this->assertSame([
+			'id' => 1,
+			'name' => 'hiromi',
+			'email' => 'hiromi2424@exmaple.com',
+			'likes' => [4, 5, 6],
+		], $result);
+	}
+
+	/**
+	 * test processSaveRecord() method
+	 *
+	 * @test
+	 */
+	public function processSaveRecord() {
+		$this->generateComponent([
+			'mocks' => [
+				'Api' => [
+					'saveRecord',
+					'processValidationErrors',
+				],
+			],
+		]);
+		$mock = $this->getMockBuilder('stdclass')
+			->setMethods(['successCallback'])
+			->getMock();
+		$mock->expects($this->once())
+			->method('successCallback')
+			->will($this->returnValue([
+				'success' => 'value',
+			]));
+		$this->Api->expects($this->at(0))
+			->method('saveRecord')
+			->with(['success' => 'data'], [])
+			->will($this->returnValue(true));
+		$this->Api->expects($this->at(1))
+			->method('saveRecord')
+			->with(['failure' => 'data'], [])
+			->will($this->returnValue(false));
+		$this->Api->expects($this->once())
+			->method('processValidationErrors');
+
+		$this->Api->processSaveRecord(['success' => 'data'], [
+			'successCallback' => [$mock, 'successCallback'],
+		]);
+		$this->Api->processSaveRecord(['failure' => 'data']);
+	}
+
+	/**
+	 * test processValidationErrors() method
+	 *
+	 * @test
+	 */
+	public function processValidationErrors() {
+		$options = [
+			'mocks' => [
+				'Api' => [
+					'raiseValidationErrors',
+					'setValidationErrors',
+				],
+			],
+		];
+		$this->generateComponent($options);
+
+		$this->Api->expects($this->once())
+			->method('raiseValidationErrors');
+		$this->Api->expects($this->once())
+			->method('setValidationErrors')
+			->with(null);
+		$this->Api->processValidationErrors();
+
+		$this->generateComponent($options);
+		$this->Api->expects($this->once())
+			->method('raiseValidationErrors');
+		$this->Api->expects($this->once())
+			->method('setValidationErrors')
+			->with('User');
+		$this->Api->processValidationErrors('User');
+	}
+
+	/**
+	 * test raiseValidationErrors() method
+	 *
+	 * @test
+	 */
+	public function raiseValidationErrors() {
+		$options = [
+			'mocks' => [
+				'Api' => [
+					'failure',
+					'setResponse',
+				],
+			],
+		];
+		$this->generateComponent($options);
+		$this->Api->expects($this->once())
+			->method('failure')
+			->with(ApiError::VALIDATION_ERROR, 400);
+		$this->Api->expects($this->never())
+			->method('setResponse');
+		$this->Api->raiseValidationErrors();
+
+		$this->generateComponent($options);
+		$this->Api->expects($this->once())
+			->method('failure')
+			->with(ApiError::VALIDATION_ERROR, 400);
+		$this->Api->expects($this->once())
+			->method('setResponse')
+			->with([
+				'validationErrors' =>  [
+					'id' => [
+						'exists',
+					],
+				],
+			]);
+		$this->Api->raiseValidationErrors([
+			'id' => [
+				'exists',
+			],
+		]);
+	}
+
+	/**
+	 * test saveRecord() method
+	 *
+	 * @test
+	 */
+	public function saveRecord() {
+		$options = [
+			'mocks' => [
+				'Api' => [
+					'_defaultSaveCallback',
+					'collectParam',
+					'convertBoolean',
+				],
+			],
+		];
+		$data = [
+			'User' => [
+				'id' => 1,
+			],
+		];
+
+		$this->generateComponent($options);
+		$this->Api->expects($this->once())
+			->method('_defaultSaveCallback')
+			->with($data, ['validate' => 'first']);
+		$this->Api->saveRecord($data);
+
+		$this->generateComponent($options);
+		$mock = $this->getMockBuilder('stdclass')
+			->setMethods(['saveCallback'])
+			->getMock();
+		$mock->expects($this->once())
+			->method('saveCallback')
+			->will($this->returnValue([
+				'saved' => 'value',
+			]));
+		$this->Api->saveRecord($data, ['saveCallback' => [$mock, 'saveCallback']]);
+
+		$this->generateComponent($options);
+		$this->Api->expects($this->once())
+			->method('collectParam')
+			->with('validate_only')
+			->will($this->returnValue('yes'));
+		$this->Api->staticExpects($this->once())
+			->method('convertBoolean')
+			->with('yes')
+			->will($this->returnValue(true));
+		$this->Api->expects($this->once())
+			->method('_defaultSaveCallback')
+			->with($data, ['validate' => 'only']);
+		$this->Api->saveRecord($data);
+	}
+
+	/**
+	 * test convertBoolean() method
+	 *
+	 * @test
+	 */
+	public function convertBoolean() {
+		$this->assertSame(true, ApiComponent::convertBoolean('yes'));
+		$this->assertSame(false, ApiComponent::convertBoolean('no'));
+		$this->AssertSame([
+			true,
+			true,
+			true,
+			true,
+			true,
+			false,
+			false,
+			false,
+			false,
+			false,
+		], ApiComponent::convertBoolean([
+			true,
+			'yes',
+			'true',
+			'1',
+			1,
+			false,
+			'false',
+			'no',
+			'0',
+			0,
+		]));
+	}
+
+	/**
+	 * test _getDefaultModel() method
+	 *
+	 * @test
+	 */
+	public function _getDefaultModel() {
+		$this->generateComponent();
+		$model = $this->getMockBuilder('Model')
+			->setConstructorArgs([false, false])
+			->getMock();
+		$class = get_class($model);
+
+		$this->controller->modelClass = $class;
+		$result = $this->Api->dispatchMethod('_getDefaultModel');
+		$this->assertInstanceOf($class, $result);
+
+		$this->controller->modelClass = 'User';
+		$this->Api->useModel = $class;
+		$result = $this->Api->dispatchMethod('_getDefaultModel');
+		$this->assertInstanceOf($class, $result);
+	}
+
+	/**
+	 * test _defaultSaveCallback() method
+	 *
+	 * @test
+	 */
+	public function _defaultSaveCallback() {
+		$this->generateComponent([
+			'mocks' => [
+				'Api' => [
+					'_getDefaultModel',
+				],
+			],
+		]);
+		$mock = $this->getMockBuilder('stdclass')
+			->setMethods(['saveAll'])
+			->getMock();
+		$mock->expects($this->once())
+			->method('saveAll')
+			->with('testData', ['testOptions'])
+			->will($this->returnValue(true));
+		$this->Api->expects($this->once())
+			->method('_getDefaultModel')
+			->will($this->returnValue($mock));
+		$result = $this->Api->dispatchMethod('_defaultSaveCallback', [
+			'testData',
+			['testOptions']
+		]);
+	}
+
+	/**
+	 * test setValidationErrors() method
+	 *
+	 * @test
+	 */
+	public function setValidationErrors() {
+		$this->generateComponent([
+			'mocks' => [
+				'Api' => [
+					'collectValidationErrors',
+					'recordToParams',
+					'setResponse',
+				],
+			],
+		]);
+		$this->Api->expects($this->once())
+			->method('collectValidationErrors')
+			->with(null)
+			->will($this->returnValue(['records']));
+		$this->Api->expects($this->once())
+			->method('recordToParams')
+			->with(['records'])
+			->will($this->returnValue('params'));
+		$this->Api->expects($this->once())
+			->method('setResponse')
+			->with([
+				'validationErrors' => 'params',
+			]);
+		$this->Api->setValidationErrors();
+	}
+
+	/**
+	 * test collectValidationErrors() method
+	 *
+	 * @test
+	 */
+	public function collectValidationErrors() {
+		$this->generateComponent();
+		$model1 = $this->getMockBuilder('Model')
+			->setConstructorArgs([[
+				'alias' => 'Model1',
+				'table' => false,
+			]])
+			->getMock();
+		$model2 = $this->getMockBuilder('Model')
+			->setConstructorArgs([[
+				'alias' => 'Model2',
+				'table' => false,
+			]])
+			->getMock();
+		$model1->Model2 = $model2;
+		$model1->validationErrors = [
+			'name' => [
+				'maxLength',
+			],
+		];
+		$model2->validationErrors = [
+			'number' => [
+				'numeric',
+			],
+		];
+		$model1->validationErrors['Model2'] = $model2->validationErrors;
+		$result = $this->Api->collectValidationErrors('Model1');
+		$this->assertSame([
+			'Model1' => [
+				'name' => [
+					'maxLength',
+				],
+			],
+			'Model2' => [
+				'number' => [
+					'numeric',
+				],
+			],
+		], $result);
+	}
+
+	/**
+	 * test setResponse() method
+	 *
+	 * @test
+	 */
+	public function setResponse() {
+		$this->generateComponent();
+		$this->Api->setResponse('one', 'two');
+		$this->assertSame([
+			'one' => 'two',
+		], $this->Api->getResponse());
+
+		$this->Api->setResponse(['three' => 3]);
+		$this->assertSame([
+			'one' => 'two',
+			'three' => 3,
+		], $this->Api->getResponse());
+		$this->Api->setResponse([
+			'Hashed' => [
+				'Array' => [1, 2, 3],
+			],
+		]);
+		$this->Api->setResponse([
+			'Hashed' => [
+				'Array' => [4, 5, 6],
+			],
+		]);
+		$this->assertSame([
+			'one' => 'two',
+			'three' => 3,
+			'Hashed' => [
+				'Array' => [1, 2, 3, 4, 5, 6],
+			],
+		], $this->Api->getResponse());
+	}
+
+	/**
+	 * test success() method
+	 *
+	 * @test
+	 */
+	public function success() {
+		$this->generateComponent();
+		$this->Api->success();
+		$this->assertSame([
+			'success' => true,
+			'code' => 200,
+		], $this->Api->getResponse());
+
+		// with data
+		$this->generateComponent();
+		$this->Api->success([
+			'user' => [
+				'id' => 1,
+			],
+		]);
+		$this->assertSame([
+			'success' => true,
+			'code' => 200,
+			'data' => [
+				'user' => [
+					'id' => 1,
+				],
+			],
+		], $this->Api->getResponse());
+	}
+
+	/**
+	 * test failure() method
+	 *
+	 * @test
+	 */
+	public function failure() {
+		$this->generateComponent();
+		$this->Api->failure(ApiError::VALIDATION_ERROR);
+		$this->assertSame([
+			'success' => false,
+			'code' => 500,
+			'errorCode' => ApiError::VALIDATION_ERROR,
+			'errorMessage' => ApiError::message(ApiError::VALIDATION_ERROR),
+		], $this->Api->getResponse());
+
+		$this->generateComponent();
+		$this->Api->failure(ApiError::VALIDATION_ERROR, 501);
+		$this->assertSame(501, $this->Api->getResponse()['code']);
+	}
+
+	/**
+	 * test getResponse() method
+	 *
+	 * @test
+	 */
+	public function getResponse() {
+		$this->generateComponent();
+		$this->Api->setResponse([
+			'very' => [
+				'deep' => [
+					'array' => [
+						'test',
+					],
+				],
+			],
+		]);
+		$this->assertSame('test', $this->Api->getResponse('very.deep.array.0'));
 	}
 
 }

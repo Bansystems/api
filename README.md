@@ -1,6 +1,14 @@
-# Ninja [![Build Status](https://secure.travis-ci.org/hiromi2424/api.png?branch=master)](http://travis-ci.org/hiromi2424/api)
-
 # APIコンポーネント
+
+[![Build Status](https://secure.travis-ci.org/hiromi2424/api.png?branch=master)](http://travis-ci.org/hiromi2424/api)
+[![Downloads](https://poser.pugx.org/hiromi2424/api/d/total.png)](https://packagist.org/packages/hiromi2424/api)
+[![Latest Version](https://poser.pugx.org/hiromi2424/api/v/stable.png)](https://packagist.org/packages/hiromi2424/api)
+[![License](https://poser.pugx.org/leaphly/cart-bundle/license.svg)](https://packagist.org/packages/leaphly/cart-bundle)
+
+## 要件
+
+    CakePHP 2.5+
+    PHP 5.4.16+
 
 ## 概要
 

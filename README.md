@@ -1,3 +1,5 @@
+# Ninja [![Build Status](https://secure.travis-ci.org/hiromi2424/api.png?branch=master)](http://travis-ci.org/hiromi2424/api)
+
 # APIコンポーネント
 
 ## 概要
@@ -92,20 +94,20 @@ Class CommentsController extends AppController {
 				'name',
 			],
 		];
-	
+
 		$this->Comment->create();
 		$this->Comment->set('post_id', $postId);
 		if (!$this->Comment->validates(['fieldList' => ['post_id']])) {
 			$this->Api->recordMap = ['Comment' => ['post_id']];
 			return $this->Api->processValidationErrors();
 		}
-	
+
 		$limit = 20;
 		$page = $this->Api->collectParam('page');
 		$page = $page ? (int)$page : 1;
 		$contain = ['User'];
 		$comments = $this->Comment->findAllByPostId($postId, compact('limit', 'page', 'contain'));
-	
+
 		foreach ($comments as &$comment) {
 			$comment = $this->Api->recordToParams($comment);
 		}
@@ -170,4 +172,4 @@ Class CommentsController extends AppController {
 - 既存のアプリケーションに適用するのは困難です
 - テストはまだ書かれていません
 - ドキュメント化されていない不完全な機能が一部あります(habtm、hasMany対応など）
-	- 通常使用には問題ありません 
+	- 通常使用には問題ありません

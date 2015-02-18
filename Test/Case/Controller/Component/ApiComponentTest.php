@@ -1329,6 +1329,10 @@ class ApiComponentTest extends CakeTestCase {
 			'one' => 'two',
 			'three' => 3,
 		], $this->Api->getResponse());
+
+		$this->Api->setResponse([]);
+		$this->assertSame([], $this->Api->getResponse());
+
 		$this->Api->setResponse([
 			'Hashed' => [
 				'Array' => [1, 2, 3],
@@ -1340,12 +1344,35 @@ class ApiComponentTest extends CakeTestCase {
 			],
 		]);
 		$this->assertSame([
-			'one' => 'two',
-			'three' => 3,
 			'Hashed' => [
 				'Array' => [1, 2, 3, 4, 5, 6],
 			],
 		], $this->Api->getResponse());
+
+		$this->Api->setResponse(null);
+		$this->assertSame([], $this->Api->getResponse());
+
+		$this->Api->setResponse('Nested.Array.key', 'value');
+		$this->assertSame([
+			'Nested' => [
+				'Array' => [
+					'key' => 'value',
+				],
+			],
+		], $this->Api->getResponse());
+
+		$this->Api->setResponse('Nested.Array.key2', 'value2');
+		$this->assertSame([
+			'Nested' => [
+				'Array' => [
+					'key' => 'value',
+					'key2' => 'value2',
+				],
+			],
+		], $this->Api->getResponse());
+
+		$this->Api->setResponse(false);
+		$this->assertSame([], $this->Api->getResponse());
 	}
 
 	/**

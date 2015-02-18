@@ -776,17 +776,25 @@ class ApiComponent extends Component {
 
 /**
  * レスポンスをセットします。
- * Model::set(), Controller::set()のような挙動をします。
+ * Configure::write(), CakeSession::write()のような挙動をします。
+ * $vars = null|false|[] ならば、レスポンスを空にします。
  *
  * @param mixed $vars
  * @param mixed $value
  * @return void
  */
 	public function setResponse($vars, $value = null) {
-		if (!is_array($vars)) {
-			$vars = [$vars => $value];
+		if (is_array($vars)) {
+			if ($vars === []) {
+				$this->_response = [];
+			} else {
+				$this->_response = Hash::merge($this->_response, $vars);
+			}
+		} elseif (in_array($vars, [null, false], true) && $value === null) {
+			$this->_response = [];
+		} else {
+			$this->_response = Hash::insert($this->_response, $vars, $value);
 		}
-		$this->_response = Hash::merge($this->_response, $vars);
 	}
 
 /**

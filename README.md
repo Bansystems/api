@@ -15,6 +15,26 @@
 CakePHPでREST APIを実現するためのコンポーネントと、その付属ライブラリ群です。
 基本的にはコンポーネントを設置し、`Routing.prefixes`に`'api'`を含めるだけで使えます。
 
+### セットアップ
+
+- `Configure::write('Routing.prefixes', ['api']);` を `app/Config/core.php` で設定
+- `app/Config/routes.php` で以下のルートを作成(プラグインのルートがプレフィックスよりも優先されるため。
+  `require CAKE . 'Config' . DS . 'routes.php';`の前に設置)
+
+```php
+Router::connect('/api/:controller/:action/*', ['api' => true]);
+Router::connect('/api/:controller/*', ['action' => 'index', 'api' => true]);
+```
+
+- `CakePlugin::load(Api);` OR `CakePlugin::loadAll()` を `app/Config/bootstarp.php` で設定
+- 使いたいコントローラ(OR `AppController`)で以下のように設定
+
+```php
+$components = [
+	'Api.Api'
+];
+  ```
+
 ### コーディング例
 
 #### 新規登録（メールアドレス）

@@ -122,14 +122,14 @@ class ApiComponent extends Component {
  *
  * @var string
  */
-	public $exceptionRenderer = 'ApiExceptionRenderer';
+	public $exceptionRenderer = 'Api.ApiExceptionRenderer';
 
 /**
  * 認証ハンドラの設定
  *
  * @var string
  */
-	public $setAuthenticate = 'Api';
+	public $setAuthenticate = 'Api.Api';
 
 /**
  * 初期化時設定メソッドの指定

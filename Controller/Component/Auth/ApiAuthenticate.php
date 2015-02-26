@@ -1,6 +1,7 @@
 <?php
 
 App::uses('FormAuthenticate', 'Controller/Component/Auth');
+App::uses('UnauthorizedException', 'Api.Error');
 
 class ApiAuthenticate extends FormAuthenticate {
 

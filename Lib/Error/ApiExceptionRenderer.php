@@ -1,7 +1,7 @@
 <?php
 
 App::uses('CakeResponse', 'Network');
-App::uses('ApiError', 'Error');
+App::uses('ApiError', 'Api.Error');
 
 class ApiExceptionRenderer {
 

@@ -1,14 +1,25 @@
 <?php
 
-App::uses('Component', 'Controller');
-App::uses('ApiError', 'Api.Error');
-App::uses('LackParametersException', 'Api.Error');
-App::uses('Debugger', 'Utility');
+namespace Api\Controller\Component;
+
+use Cake\Controller\Controller;
+use Cake\Controller\Component;
+use Cake\Core\Configure;
+use Cake\Network\Request;
+use Cake\Network\Exception\ForbiddenException;
+use Cake\Utility\Hash;
+use Cake\Event\Event;
+use Cake\Error\Debugger;
+use Cake\ORM\TableRegistry;
+use Api\Error\ApiError;
+use Api\Error\LackParametersException;
+use \DomainException;
 
 /**
  * Class ApiComponent
  */
-class ApiComponent extends Component {
+class ApiComponent extends Component
+{
 
 /**
  * アクションの最終レスポンスを格納
@@ -143,18 +154,20 @@ class ApiComponent extends Component {
 		'_handleVersion' => true,
 	];
 
+	public $prefix = 'api';
+
 /**
  * 現在のリクエストがAPIかどうか
  *
- * @param CakeRequest $request
+ * @param Cake\Network\Request $request
  * @return bool
  */
-	public function isApiRequest(CakeRequest $request = null) {
+	public function isApiRequest(Request $request = null) {
 		if ($request === null) {
-			$request = $this->controller->request;
+			$request = $this->_registry->getController()->request;
 		}
 
-		return !empty($request->params['api']);
+		return $request->prefix === $this->prefix;
 	}
 
 /**
@@ -163,8 +176,15 @@ class ApiComponent extends Component {
  * @param Controller $controller
  * @return void
  */
-	public function initialize(Controller $controller) {
-		$this->controller = $controller;
+	public function initialize(array $config) {
+		$properties = array_keys(get_class_vars(get_class($this)));
+		foreach ($config as $key => $val) {
+			if (in_array($key, $properties)) {
+				$this->$key = $val;
+			}
+		}
+
+		$controller = $this->_registry->getController();
 		if ($this->isApiRequest($controller->request)) {
 			foreach (Hash::normalize($this->configMethods) as $method => $enabled) {
 				if ($enabled) {
@@ -173,34 +193,34 @@ class ApiComponent extends Component {
 			}
 		}
 
-		return parent::initialize($controller);
+		return parent::initialize($config);
 	}
 
 /**
  * beforeRender callback
  * レスポンスの描画を行います。
  *
- * @param Controller $controller
+ * @param Cake\Event\Event $event
  * @return void
  */
-	public function beforeRender(Controller $controller) {
+	public function beforeRender(Event $event) {
+		$controller = $this->_registry->getController();
 		if ($this->isApiRequest($controller->request)) {
 			if (empty($this->_response)) {
 				$this->failure(ApiError::NOT_IMPLEMENTED, 501);
 			}
-			if ($this->logDb && Configure::read('debug') >= $this->logDb) {
-				$this->setResponse('dbLog', $this->_getDbLog());
+
+			if ($this->logDb && Configure::read('debug')) {
+				//$this->setResponse('dbLog', $this->_getDbLog());
 			}
 			$response = $this->getResponse();
 			$controller->response->statusCode($response['code']);
 			$controller->set(compact('response'));
 			$controller->set('_serialize', 'response');
-			if ($controller->viewClass === 'View') {
-				$controller->viewClass = 'Json';
+			if (!$controller->viewBuilder()->className()) {
+				$controller->viewBuilder()->className('Json');
 			}
 		}
-
-		return parent::beforeRender($controller);
 	}
 
 /**
@@ -209,7 +229,7 @@ class ApiComponent extends Component {
  * @return array log of database
  */
 	protected function _getDbLog() {
-		return ConnectionManager::getDataSource('default')->getLog();
+		//return ConnectionManager::getDataSource('default')->getLog();
 	}
 
 /**
@@ -265,16 +285,13 @@ class ApiComponent extends Component {
  * @return void
  */
 	protected function _handleVersion($controller) {
-		$modelConfig = ClassRegistry::config('Model');
-		if (!empty($modelConfig['testing'])) {
-			$this->version = $this->recentVersion;
-			if ($version = Configure::read('TEST_API_VERSION')) {
-				$this->version = $version;
-			}
+		$this->version = $this->currentVersion;
+
+		if ($version = Configure::read('TEST_API_VERSION')) {
+			$this->version = $version;
 			return;
 		}
 
-		$this->version = $this->currentVersion;
 		if ($version = $controller->request->header('APIVersion')) {
 			$this->version = $version;
 		}
@@ -365,7 +382,7 @@ class ApiComponent extends Component {
  * @return array param values
  */
 	public function collectParams(array $keys = array()) {
-		$request = $this->controller->request;
+		$request = $this->_registry->getController()->request;
 		if ($request->is('get')) {
 			$params = (array)$request->query;
 		} else {
@@ -569,83 +586,6 @@ class ApiComponent extends Component {
 	}
 
 /**
- * 一般的な保存処理をまとめています。
- * 保存処理をし、失敗すればバリデーションエラーを集めて返します。
- * バリデーションエラーを集めるためにはApiComponent::recordMapの設定が必要になります。
- *
- * 設定：
- * - successCallback: 保存が成功した場合、レスポンスとして返すデータを返り値とするコールバックを指定します。
- * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallbackを見てください。
- *
- * @param mixed $data
- * @param array $options
- * @return mixed result of save process
- */
-	public function processSaveRecord($data, $options = []) {
-		$successCallback = Hash::get($options, 'successCallback');
-		unset($options['successCallback']);
-		$result = $this->saveRecord($data, $options);
-		if ($result) {
-			$data = $successCallback ? $successCallback() : null;
-			$this->success($data);
-		} else {
-			$this->processValidationErrors();
-		}
-
-		return $result;
-	}
-
-/**
- * バリデーションエラーをかき集めてAPIの応答をバリデーションエラーにします。
- *
- * @param string $model
- * @return array params
- */
-	public function processValidationErrors($model = null) {
-		$this->raiseValidationErrors();
-		$this->setValidationErrors($model);
-	}
-
-/**
- * APIの応答をバリデーションエラーにします。
- * $validationErrorsが指定された場合、レスポンスにそれを直接含めます。
- *
- * @param array $validationErrors
- * @return array params
- */
-	public function raiseValidationErrors($validationErrors = null) {
-		$this->failure(ApiError::VALIDATION_ERROR, 400);
-		if ($validationErrors !== null) {
-			$this->setResponse(compact('validationErrors'));
-		}
-	}
-
-/**
- * 一般的な保存処理です。
- * リクエストパラメータでvalidate_onlyに真の値が指定されている場合、バリデーションのみを行います。
- *
- * 設定：
- * - saveCallback: 保存処理。デフォルトの処理はApiComponent::_defaultSaveCallbackを見てください。
- *
- * @param mixed $data
- * @param array $options
- * @return mixed result of save process
- * @see ApiComponent::processSaveRecord()
- */
-	public function saveRecord($data, array $options = []) {
-		$options += [
-			'saveCallback' => [$this, '_defaultSaveCallback'],
-		];
-		$saveCallback = $options['saveCallback'];
-		unset($options['saveCallback']);
-
-		$validateOnly = $this->collectParam('validate_only');
-		$validateOnly = $this->convertBoolean($validateOnly);
-		$options += ['validate' => ($validateOnly ? 'only' : 'first')];
-		return $saveCallback($data, $options);
-	}
-
-/**
  * リクエストパラメータの値を変換し、真偽値として返します。
  * リクエストパラメータで、真偽値を要求する場合多様な指定を可能にします。
  * 配列が指定された場合、配列の要素各々に対して変換をします。
@@ -696,82 +636,6 @@ class ApiComponent extends Component {
 		}
 
 		return $value;
-	}
-
-/**
- * デフォルトのモデルを返すヘルパーメソッドです。
- *
- * @return Model
- * @see Controller::$modelClass
- * @see ApiComponent::$useModel
- */
-	protected function _getDefaultModel() {
-		$model = $this->useModel ?: $this->controller->modelClass;
-		return ClassRegistry::init($model);
-	}
-
-/**
- * デフォルトの保存処理です。
- *
- * @param mixed $data
- * @param array $options
- * @return mixed bool
- * @see ApiComponent::processSaveRecord()
- */
-	protected function _defaultSaveCallback($data, array $options) {
-		$Model = $this->_getDefaultModel();
-		$result = $Model->saveAll($data, $options);
-		return $result === true || (is_array($result) && !in_array(false, $result, true));
-	}
-
-/**
- * ApiComponent::$recordMapを元にバリデーションエラーを取得し、レスポンスに含めます。
- *
- * @param string $model
- * @return void
- * @see ApiComponent::$recordMap
- */
-	public function setValidationErrors($model = null) {
-		$validationErrors = $this->collectValidationErrors($model);
-		$validationErrors = $this->recordToParams($validationErrors);
-		$this->setResponse(compact('validationErrors'));
-	}
-
-/**
- * ApiComponent::$recordMapを元にバリデーションエラーを取得し、それを返します。
- *
- * @param string $model
- * @return array validationErrors
- * @see ApiComponent::$recordMap
- */
-	public function collectValidationErrors($model = null) {
-		if ($model !== null) {
-			$Model = ClassRegistry::init($model);
-		} else {
-			$Model = $this->_getDefaultModel();
-		}
-		return $this->_collectValidationErrors($Model);
-	}
-
-/**
- * collectValidationErrorsのヘルパーメソッドです。
- * 再帰的にバリデーションエラーを取得します。
- *
- * @param Model $Model
- * @return array validationErrors
- * @see ApiComponent::$recordMap
- */
-	protected function _collectValidationErrors($Model) {
-		$validationErrors = [];
-		foreach ($Model->validationErrors as $field => $errors) {
-			if (isset($Model->$field) && $Model->$field instanceof Model) {
-				$validationErrors = array_merge($validationErrors, $this->_collectValidationErrors($Model->$field));
-			} else {
-				$validationErrors[$Model->alias][$field] = $errors;
-			}
-		}
-
-		return $validationErrors;
 	}
 
 /**
@@ -843,6 +707,15 @@ class ApiComponent extends Component {
 			return Hash::get($this->_response, $key);
 		}
 		return $this->_response;
+	}
+
+/**
+ * 非公開メソッドにアクセスします。
+ * debugモード有効時のみ（テスト用）
+ */
+	public function dispatchMethod($method, $args = [])
+	{
+		return call_user_func_array([$this, $method], $args);
 	}
 
 }

@@ -1,5 +1,7 @@
 <?php
 
+namespace Api\Error;
+
 class ApiError {
 
 	const UNAUTHENTICATED = 'unauthenticated';

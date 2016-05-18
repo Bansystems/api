@@ -1,7 +1,9 @@
 {
     "name": "hiromi2424/api",
-    "description": "API components",
+    "description": "API components for CakePHP",
     "type": "cakephp-plugin",
+    "keywords": ["cakephp", "api"],
+    "homepage": "https://github.com/hiromi2424/api",
     "license": "MIT",
     "authors": [
         {
@@ -14,7 +16,23 @@
         "source": "https://github.com/hiromi2424/api"
     },
     "require": {
-        "php": ">=5.4.16",
-        "composer/installers": "*"
-    }
+        "cakephp/cakephp": ">=3.0.0 <4.0"
+    },
+    "require-dev": {
+        "cakephp/cakephp-codesniffer": "dev-master",
+        "phpunit/phpunit": "4.1.*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Api\\": "src",
+            "Api\\Test\\Fixture\\": "tests\\Fixture"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Cake\\Test\\": "vendor/cakephp/cakephp/tests",
+            "Api\\Test\\": "tests"
+        }
+    },
+    "minimum-stability": "beta"
 }

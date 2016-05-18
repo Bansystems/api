@@ -1,15 +1,16 @@
 <?php
 
-App::uses('CakeResponse', 'Network');
-App::uses('ApiError', 'Api.Error');
+namespace Api\Error;
+
+use Cake\Network\Response;
 
 class ApiExceptionRenderer {
 
 	public $response = null;
 	public $exception = null;
 
-	public function __construct(Exception $exception) {
-		$this->response = new CakeResponse();
+	public function __construct(\Exception $exception) {
+		$this->response = new Response();
 		try {
 			$this->response->statusCode($exception->getCode());
 		} catch (CakeException $e) {

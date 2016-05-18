@@ -1,12 +1,19 @@
 <?php
 
-App::uses('CakeRequest', 'Network');
-App::uses('CakeResponse', 'Network');
-App::uses('Controller', 'Controller');
-App::uses('ComponentCollection', 'Controller');
-App::uses('ApiComponent', 'Api.Controller/Component');
+namespace Api\Test\Controller\Component;
 
-class ApiComponentTest extends CakeTestCase {
+use Cake\Network\Request;
+use Cake\Network\Response;
+use Cake\Controller;
+use Cake\Core\Configure;
+use Cake\ComponentRegistry;
+use Cake\Event\Event;
+use Cake\Utility\Hash;
+use Api\Controller\Component\ApiComponent;
+use Api\Error\ApiError;
+
+use Cake\TestSuite\TestCase;
+class ApiComponentTest extends TestCase {
 
 	/**
 	 * Api component instance to test
@@ -16,11 +23,11 @@ class ApiComponentTest extends CakeTestCase {
 	public $Api;
 
 	/**
-	 * Component collection instance for test
+	 * Component registry instance for test
 	 *
-	 * @var ComponentCollection
+	 * @var ComponentRegistry
 	 */
-	public $collection;
+	public $registry;
 
 	/**
 	 * Controller instance for test
@@ -42,6 +49,13 @@ class ApiComponentTest extends CakeTestCase {
 	 * @var CakeResponse
 	 */
 	public $response;
+	public $debug;
+
+	public function setUp()
+	{
+		$this->debug = Configure::read('debug');
+		Configure::write('debug', true);
+	}
 
 	/**
 	 * tear down for each cases
@@ -51,12 +65,13 @@ class ApiComponentTest extends CakeTestCase {
 	public function tearDown() {
 		unset(
 			$this->Api,
-			$this->collection,
+			$this->registry,
 			$this->controller,
 			$this->request,
 			$this->response
 		);
 		parent::tearDown();
+		Configure::write('debug', $this->debug);
 	}
 
 	/**
@@ -81,33 +96,28 @@ class ApiComponentTest extends CakeTestCase {
 				'setExceptionHandler' => false,
 				'setAuthenticate' => false,
 			],
-			'initialize' => true,
 		], $options);
 		extract($options);
 
-		$this->request = $this->getMockBuilder('CakeRequest')
-			->setConstructorArgs(['/', false])
+		$this->request = $this->getMockBuilder('Cake\Network\Request')
+			->setConstructorArgs([['url' => '/']])
 			->setMethods(Hash::get($mocks, 'request'))
 			->getMock();
-		$this->response = $this->getMockBuilder('CakeResponse')
+		$this->response = $this->getMockBuilder('Cake\Network\Response')
 			->setMethods(Hash::get($mocks, 'response'))
 			->getMock();
-		$this->controller = $this->getMockBuilder('Controller')
+		$this->controller = $this->getMockBuilder('Cake\Controller\Controller')
 			->setConstructorArgs([$this->request, $this->response])
 			->setMethods(Hash::get($mocks, 'controller'))
 			->getMock();
-		$this->collection = $this->getMockBuilder('ComponentCollection')
-			->setMethods(Hash::get($mocks, 'collection'))
+		$this->registry = $this->getMockBuilder('Cake\Controller\ComponentRegistry')
+			->setConstructorArgs([$this->controller])
+			->setMethods(Hash::get($mocks, 'registry'))
 			->getMock();
-		$this->collection->init($this->controller);
-		$this->Api = $this->getMockBuilder('ApiComponent')
-			->setConstructorArgs([$this->collection, $componentOptions])
+		$this->Api = $this->getMockBuilder('Api\Controller\Component\ApiComponent')
+			->setConstructorArgs([$this->registry, $componentOptions])
 			->setMethods(Hash::get($mocks, 'Api'))
 			->getMock();
-
-		if ($initialize) {
-			$this->Api->initialize($this->controller);
-		}
 
 		return $this->Api;
 	}
@@ -119,11 +129,11 @@ class ApiComponentTest extends CakeTestCase {
 	 */
 	public function isApiRequest() {
 		$this->generateComponent();
-		$this->Api->initialize($this->controller);
-		$this->request->params['api'] = true;
+		$this->Api->initialize([]);
+		$this->request->prefix = 'api';
 		$this->assertTrue($this->Api->isApiRequest());
 
-		unset($this->request->params['api']);
+		$this->request->prefix = null;
 		$this->assertFalse($this->Api->isApiRequest());
 	}
 
@@ -133,7 +143,8 @@ class ApiComponentTest extends CakeTestCase {
 	 * @test
 	 */
 	public function initialize() {
-		$configMethods = array_keys(get_class_vars('ApiComponent')['configMethods']);
+		$classVars = get_class_vars('Api\Controller\Component\ApiComponent');
+		$configMethods = array_keys($classVars['configMethods']);
 		$this->generateComponent([
 			'mocks' => [
 				'Api' => array_merge($configMethods, [
@@ -151,7 +162,7 @@ class ApiComponentTest extends CakeTestCase {
 				->expects($this->once())
 				->method($configMethod);
 		}
-		$this->Api->initialize($this->controller);
+		$this->Api->initialize([]);
 	}
 
 
@@ -174,6 +185,7 @@ class ApiComponentTest extends CakeTestCase {
 			'componentOptions' => [
 				'logDb' => true,
 			],
+			'initialize' => true,
 		]);
 
 		$this->Api->expects($this->once())
@@ -192,8 +204,8 @@ class ApiComponentTest extends CakeTestCase {
 			->will($this->returnValue([
 				'code' => 401,
 			]));
-
-		$this->Api->beforeRender($this->controller);
+		$event = new Event('Dummy');
+		$this->Api->beforeRender($event);
 		$this->assertSame(401, $this->response->statusCode());
 		$this->assertArrayHasKey('response', $this->controller->viewVars);
 		$this->assertSame([
@@ -201,7 +213,7 @@ class ApiComponentTest extends CakeTestCase {
 		], $this->controller->viewVars['response']);
 		$this->assertArrayHasKey('_serialize', $this->controller->viewVars);
 		$this->assertSame('response', $this->controller->viewVars['_serialize']);
-		$this->assertSame('Json', $this->controller->viewClass);
+		$this->assertSame('Json', $this->controller->viewBuilder()->className());
 	}
 
 	/**
@@ -215,7 +227,7 @@ class ApiComponentTest extends CakeTestCase {
 				'setAuthenticate' => 'Api',
 			],
 		]);
-		$this->controller->Auth = new stdclass;
+		$this->controller->Auth = new \stdclass;
 		$this->controller->Auth->authenticate = [
 			'Form' => [
 				'fields' => [
@@ -267,11 +279,7 @@ class ApiComponentTest extends CakeTestCase {
 		$this->Api->dispatchMethod('_handleVersion', [$this->controller]);
 		$this->assertSame('2.1', $this->Api->version);
 
-		$modelConfig = ClassRegistry::config('Model');
-		ClassRegistry::config('Model', null);
-		$this->generateComponent();
-		$this->Api->dispatchMethod('_handleVersion', [$this->controller]);
-		$this->assertSame('1.0', $this->Api->version);
+		Configure::delete('TEST_API_VERSION');
 
 		$this->generateComponent([
 			'mocks' => [
@@ -280,15 +288,14 @@ class ApiComponentTest extends CakeTestCase {
 				],
 			],
 		]);
-		$this->request->staticExpects($this->once())
+		$this->request->expects($this->once())
 			->method('header')
 			->with('APIVersion')
 			->will($this->returnValue('3.5'));
 		$this->Api->dispatchMethod('_handleVersion', [$this->controller]);
 		$this->assertSame('3.5', $this->Api->version);
 
-		ClassRegistry::config('Model', $modelConfig);
-		Configure::delete('TEST_API_VERSION');
+		//ClassRegistry::config('Model', $modelConfig);
 	}
 
 	/**
@@ -318,8 +325,8 @@ class ApiComponentTest extends CakeTestCase {
 		try {
 			$this->Api->requireVersion('2.1');
 			$this->fail('Expected ForbiddenException was not thrown');
-		} catch (Exception $e) {
-			$this->assertInstanceOf('ForbiddenException', $e);
+		} catch (\Exception $e) {
+			$this->assertInstanceOf('Cake\Network\Exception\ForbiddenException', $e);
 		}
 	}
 
@@ -402,8 +409,8 @@ class ApiComponentTest extends CakeTestCase {
 		try {
 			$this->Api->requireParams(['test']);
 			$this->fail('Expected LackParametersException was not thrown');
-		} catch (Exception $e) {
-			$this->assertInstanceOf('LackParametersException', $e);
+		} catch (\Exception $e) {
+			$this->assertInstanceOf('Api\Error\LackParametersException', $e);
 			$this->assertSame('test', $e->getMessage());
 		}
 	}
@@ -679,10 +686,10 @@ class ApiComponentTest extends CakeTestCase {
 		try {
 			$this->Api->requireParamsFromMap();
 			$this->fail('Expected LackParametersException was not thrown');
-		} catch (PHPUnit_Framework_AssertionFailedError $e) {
+		} catch (\PHPUnit_Framework_AssertionFailedError $e) {
 			throw $e;
-		} catch (Exception $e) {
-			$this->assertInstanceOf('LackParametersException', $e);
+		} catch (\Exception $e) {
+			$this->assertInstanceOf('Api\Error\LackParametersException', $e);
 			$this->assertSame('id, name, email', $e->getMessage());
 		}
 
@@ -693,10 +700,10 @@ class ApiComponentTest extends CakeTestCase {
 		try {
 			$this->Api->requireParamsFromMap();
 			$this->fail('Expected LackParametersException was not thrown');
-		} catch (PHPUnit_Framework_AssertionFailedError $e) {
+		} catch (\PHPUnit_Framework_AssertionFailedError $e) {
 			throw $e;
-		} catch (Exception $e) {
-			$this->assertInstanceOf('LackParametersException', $e);
+		} catch (\Exception $e) {
+			$this->assertInstanceOf('Api\Error\LackParametersException', $e);
 			$this->assertSame('email', $e->getMessage());
 		}
 
@@ -870,10 +877,10 @@ class ApiComponentTest extends CakeTestCase {
 		try {
 			$this->Api->paramsToRecord($params);
 			$this->fail('Expected DomainException was not thrown');
-		} catch (PHPUnit_Framework_AssertionFailedError $e) {
+		} catch (\PHPUnit_Framework_AssertionFailedError $e) {
 			throw $e;
-		} catch (Exception $e) {
-			$this->assertInstanceOf('DomainException', $e);
+		} catch (\Exception $e) {
+			$this->assertInstanceOf('\DomainException', $e);
 		}
 	}
 
@@ -986,172 +993,6 @@ class ApiComponentTest extends CakeTestCase {
 	}
 
 	/**
-	 * test processSaveRecord() method
-	 *
-	 * @test
-	 */
-	public function processSaveRecord() {
-		$this->generateComponent([
-			'mocks' => [
-				'Api' => [
-					'saveRecord',
-					'processValidationErrors',
-				],
-			],
-		]);
-		$mock = $this->getMockBuilder('stdclass')
-			->setMethods(['successCallback'])
-			->getMock();
-		$mock->expects($this->once())
-			->method('successCallback')
-			->will($this->returnValue([
-				'success' => 'value',
-			]));
-		$this->Api->expects($this->at(0))
-			->method('saveRecord')
-			->with(['success' => 'data'], [])
-			->will($this->returnValue(true));
-		$this->Api->expects($this->at(1))
-			->method('saveRecord')
-			->with(['failure' => 'data'], [])
-			->will($this->returnValue(false));
-		$this->Api->expects($this->once())
-			->method('processValidationErrors');
-
-		$this->Api->processSaveRecord(['success' => 'data'], [
-			'successCallback' => [$mock, 'successCallback'],
-		]);
-		$this->Api->processSaveRecord(['failure' => 'data']);
-	}
-
-	/**
-	 * test processValidationErrors() method
-	 *
-	 * @test
-	 */
-	public function processValidationErrors() {
-		$options = [
-			'mocks' => [
-				'Api' => [
-					'raiseValidationErrors',
-					'setValidationErrors',
-				],
-			],
-		];
-		$this->generateComponent($options);
-
-		$this->Api->expects($this->once())
-			->method('raiseValidationErrors');
-		$this->Api->expects($this->once())
-			->method('setValidationErrors')
-			->with(null);
-		$this->Api->processValidationErrors();
-
-		$this->generateComponent($options);
-		$this->Api->expects($this->once())
-			->method('raiseValidationErrors');
-		$this->Api->expects($this->once())
-			->method('setValidationErrors')
-			->with('User');
-		$this->Api->processValidationErrors('User');
-	}
-
-	/**
-	 * test raiseValidationErrors() method
-	 *
-	 * @test
-	 */
-	public function raiseValidationErrors() {
-		$options = [
-			'mocks' => [
-				'Api' => [
-					'failure',
-					'setResponse',
-				],
-			],
-		];
-		$this->generateComponent($options);
-		$this->Api->expects($this->once())
-			->method('failure')
-			->with(ApiError::VALIDATION_ERROR, 400);
-		$this->Api->expects($this->never())
-			->method('setResponse');
-		$this->Api->raiseValidationErrors();
-
-		$this->generateComponent($options);
-		$this->Api->expects($this->once())
-			->method('failure')
-			->with(ApiError::VALIDATION_ERROR, 400);
-		$this->Api->expects($this->once())
-			->method('setResponse')
-			->with([
-				'validationErrors' =>  [
-					'id' => [
-						'exists',
-					],
-				],
-			]);
-		$this->Api->raiseValidationErrors([
-			'id' => [
-				'exists',
-			],
-		]);
-	}
-
-	/**
-	 * test saveRecord() method
-	 *
-	 * @test
-	 */
-	public function saveRecord() {
-		$options = [
-			'mocks' => [
-				'Api' => [
-					'_defaultSaveCallback',
-					'collectParam',
-					'convertBoolean',
-				],
-			],
-		];
-		$data = [
-			'User' => [
-				'id' => 1,
-			],
-		];
-
-		$this->generateComponent($options);
-		$this->Api->expects($this->once())
-			->method('_defaultSaveCallback')
-			->with($data, ['validate' => 'first']);
-		$this->Api->saveRecord($data);
-
-		$this->generateComponent($options);
-		$mock = $this->getMockBuilder('stdclass')
-			->setMethods(['saveCallback'])
-			->getMock();
-		$mock->expects($this->once())
-			->method('saveCallback')
-			->will($this->returnValue([
-				'saved' => 'value',
-			]));
-		$this->Api->saveRecord($data, ['saveCallback' => [$mock, 'saveCallback']]);
-
-		$this->generateComponent($options);
-		$this->Api->expects($this->once())
-			->method('collectParam')
-			->with('validate_only')
-			->will($this->returnValue('yes'));
-		$this->Api->staticExpects($this->once())
-			->method('convertBoolean')
-			->with('yes')
-			->will($this->returnValue(true));
-		$this->Api->expects($this->once())
-			->method('_defaultSaveCallback')
-			->with($data, ['validate' => 'only']);
-		$this->Api->saveRecord($data);
-	}
-
-	/**
 	 * test convertBoolean() method
 	 *
 	 * @test
@@ -1182,134 +1023,6 @@ class ApiComponentTest extends CakeTestCase {
 			'0',
 			0,
 		]));
-	}
-
-	/**
-	 * test _getDefaultModel() method
-	 *
-	 * @test
-	 */
-	public function _getDefaultModel() {
-		$this->generateComponent();
-		$model = $this->getMockBuilder('Model')
-			->setConstructorArgs([false, false])
-			->getMock();
-		$class = get_class($model);
-
-		$this->controller->modelClass = $class;
-		$result = $this->Api->dispatchMethod('_getDefaultModel');
-		$this->assertInstanceOf($class, $result);
-
-		$this->controller->modelClass = 'User';
-		$this->Api->useModel = $class;
-		$result = $this->Api->dispatchMethod('_getDefaultModel');
-		$this->assertInstanceOf($class, $result);
-	}
-
-	/**
-	 * test _defaultSaveCallback() method
-	 *
-	 * @test
-	 */
-	public function _defaultSaveCallback() {
-		$this->generateComponent([
-			'mocks' => [
-				'Api' => [
-					'_getDefaultModel',
-				],
-			],
-		]);
-		$mock = $this->getMockBuilder('stdclass')
-			->setMethods(['saveAll'])
-			->getMock();
-		$mock->expects($this->once())
-			->method('saveAll')
-			->with('testData', ['testOptions'])
-			->will($this->returnValue(true));
-		$this->Api->expects($this->once())
-			->method('_getDefaultModel')
-			->will($this->returnValue($mock));
-		$result = $this->Api->dispatchMethod('_defaultSaveCallback', [
-			'testData',
-			['testOptions']
-		]);
-	}
-
-	/**
-	 * test setValidationErrors() method
-	 *
-	 * @test
-	 */
-	public function setValidationErrors() {
-		$this->generateComponent([
-			'mocks' => [
-				'Api' => [
-					'collectValidationErrors',
-					'recordToParams',
-					'setResponse',
-				],
-			],
-		]);
-		$this->Api->expects($this->once())
-			->method('collectValidationErrors')
-			->with(null)
-			->will($this->returnValue(['records']));
-		$this->Api->expects($this->once())
-			->method('recordToParams')
-			->with(['records'])
-			->will($this->returnValue('params'));
-		$this->Api->expects($this->once())
-			->method('setResponse')
-			->with([
-				'validationErrors' => 'params',
-			]);
-		$this->Api->setValidationErrors();
-	}
-
-	/**
-	 * test collectValidationErrors() method
-	 *
-	 * @test
-	 */
-	public function collectValidationErrors() {
-		$this->generateComponent();
-		$model1 = $this->getMockBuilder('Model')
-			->setConstructorArgs([[
-				'alias' => 'Model1',
-				'table' => false,
-			]])
-			->getMock();
-		$model2 = $this->getMockBuilder('Model')
-			->setConstructorArgs([[
-				'alias' => 'Model2',
-				'table' => false,
-			]])
-			->getMock();
-		$model1->Model2 = $model2;
-		$model1->validationErrors = [
-			'name' => [
-				'maxLength',
-			],
-		];
-		$model2->validationErrors = [
-			'number' => [
-				'numeric',
-			],
-		];
-		$model1->validationErrors['Model2'] = $model2->validationErrors;
-		$result = $this->Api->collectValidationErrors('Model1');
-		$this->assertSame([
-			'Model1' => [
-				'name' => [
-					'maxLength',
-				],
-			],
-			'Model2' => [
-				'number' => [
-					'numeric',
-				],
-			],
-		], $result);
 	}
 
 	/**

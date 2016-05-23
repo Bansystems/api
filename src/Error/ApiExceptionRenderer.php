@@ -3,6 +3,7 @@
 namespace Api\Error;
 
 use Cake\Network\Response;
+use Cake\Core\Configure;
 
 class ApiExceptionRenderer {
 
@@ -13,7 +14,10 @@ class ApiExceptionRenderer {
 		$this->response = new Response();
 		try {
 			$this->response->statusCode($exception->getCode());
-		} catch (CakeException $e) {
+		} catch (\InvalidArgumentException $ie) {
+			$this->response->statusCode(500);
+		} catch (\Exception $e) {
+			$exception = $e;
 			$this->response->statusCode(500);
 		}
 		$this->exception = $exception;
@@ -38,7 +42,7 @@ class ApiExceptionRenderer {
 			$errorCode = $statusCode;
 		}
 
-		if (Configure::read('debug') > 1 && $errorCode == ApiError::UNKNOWN) {
+		if (Configure::read('debug') && $errorCode == ApiError::UNKNOWN) {
 			$params['debug'] = [
 				'message' => $this->exception->getMessage(),
 				'trace' => explode("\n", $this->exception->getTraceAsString()),

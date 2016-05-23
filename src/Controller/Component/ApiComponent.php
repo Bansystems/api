@@ -129,13 +129,6 @@ class ApiComponent extends Component
 	public $setDebuggerTypeAs = 'txt';
 
 /**
- * 例外レンダラの設定
- *
- * @var string
- */
-	public $exceptionRenderer = 'Api.ApiExceptionRenderer';
-
-/**
  * 認証ハンドラの設定
  *
  * @var string
@@ -149,7 +142,6 @@ class ApiComponent extends Component
  */
 	public $configMethods = [
 		'_setDebuggerTypeAs' => true,
-		'_setExceptionHandler' => true,
 		'_setAuthenticate' => true,
 		'_handleVersion' => true,
 	];
@@ -241,18 +233,6 @@ class ApiComponent extends Component
 	protected function _setDebuggerTypeAs(Controller $controller) {
 		if ($this->setDebuggerTypeAs) {
 			Debugger::outputAs($this->setDebuggerTypeAs);
-		}
-	}
-
-/**
- * API用の例外レンダラを設定します
- *
- * @param Controller $controller
- * @return void
- */
-	protected function _setExceptionHandler(Controller $controller) {
-		if ($this->exceptionRenderer) {
-			Configure::write('Exception.renderer', $this->exceptionRenderer);
 		}
 	}
 

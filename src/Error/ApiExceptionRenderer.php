@@ -58,7 +58,7 @@ class ApiExceptionRenderer {
 
 		$this->response->body(json_encode($params));
 		$this->response->type('json');
-		$this->response->send();
+		return $this->response;
 	}
 
 }

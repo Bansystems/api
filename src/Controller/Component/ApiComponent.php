@@ -362,17 +362,28 @@ class ApiComponent extends Component
  * @return array param values
  */
 	public function collectParams(array $keys = array()) {
-		$request = $this->_registry->getController()->request;
-		if ($request->is('get')) {
-			$params = (array)$request->query;
-		} else {
-			$params = $request->data;
-		}
+		$params = $this->_data();
 
 		if (!empty($keys)) {
 			$params = array_intersect_key($params, array_flip($keys));
 		}
 
+		return $params;
+	}
+
+/**
+ * リクエストからパラメータを収集します。
+ * GET/POST値に入っているデータが対象です。
+ *
+ * @return array param values
+ */
+	protected function _data() {
+		$request = $this->_registry->getController()->request;
+		if ($request->is('get')) {
+			$params = (array)$request->query;
+		} else {
+			$params = (array)$request->data;
+		}
 		return $params;
 	}
 

@@ -1,9 +1,12 @@
 # APIコンポーネント
 
 [![Build Status](https://secure.travis-ci.org/hiromi2424/api.png?branch=3.0)](http://travis-ci.org/hiromi2424/api)
+[![Coverage Status](https://img.shields.io/codecov/c/github/hiromi2424/api.svg?style=flat-square)](https://codecov.io/github/hiromi2424/api)
 [![Downloads](https://poser.pugx.org/hiromi2424/api/d/total.png)](https://packagist.org/packages/hiromi2424/api)
 [![Latest Version](https://poser.pugx.org/hiromi2424/api/v/stable.png)](https://packagist.org/packages/hiromi2424/api)
 [![License](https://poser.pugx.org/hiromi2424/api/license.svg)](https://packagist.org/packages/hiromi2424/api)
+
+:warning: 3.0ブランチはドキュメント整備中です。実装とテストは更新済ですが、いくつかの2系で使えていた機能が削除されています。
 
 ## 要件
 

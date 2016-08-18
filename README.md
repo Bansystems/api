@@ -1,14 +1,14 @@
 # APIコンポーネント
 
-[![Build Status](https://secure.travis-ci.org/hiromi2424/api.png?branch=master)](http://travis-ci.org/hiromi2424/api)
+[![Build Status](https://secure.travis-ci.org/hiromi2424/api.png?branch=3.0)](http://travis-ci.org/hiromi2424/api)
 [![Downloads](https://poser.pugx.org/hiromi2424/api/d/total.png)](https://packagist.org/packages/hiromi2424/api)
 [![Latest Version](https://poser.pugx.org/hiromi2424/api/v/stable.png)](https://packagist.org/packages/hiromi2424/api)
 [![License](https://poser.pugx.org/hiromi2424/api/license.svg)](https://packagist.org/packages/hiromi2424/api)
 
 ## 要件
 
-    CakePHP 2.5+
-    PHP 5.4.16+
+    CakePHP 3.1*
+    PHP 5.5+
 
 ## 概要
 
@@ -17,22 +17,23 @@ CakePHPでREST APIを実現するためのコンポーネントと、その付�
 
 ### セットアップ
 
-- `Configure::write('Routing.prefixes', ['api']);` を `app/Config/core.php` で設定
-- `app/Config/routes.php` で以下のルートを作成(プラグインのルートがプレフィックスよりも優先されるため。
-  `require CAKE . 'Config' . DS . 'routes.php';`の前に設置)
+- `app/Config/routes.php` で以下のルートを作成する
 
 ```php
-Router::connect('/api/:controller/:action/*', ['api' => true]);
-Router::connect('/api/:controller/*', ['action' => 'index', 'api' => true]);
+Router::prefix('api', function ($routes) {
+    // ルート定義
+});
 ```
 
-- `CakePlugin::load(Api);` OR `CakePlugin::loadAll()` を `app/Config/bootstarp.php` で設定
+- `Plugin::load('Api');` OR `Plugin::loadAll()` を `app/config/bootstarp.php` で設定
 - 使いたいコントローラ(OR `AppController`)で以下のように設定
 
 ```php
 $components = [
 	'Api.Api'
 ];
+// または
+$this->loadComponent('Api.Api');
   ```
 
 ### コーディング例
@@ -45,7 +46,8 @@ $components = [
  *
  * @return void
  */
-public function api_signup() {
+public function signup()
+{
 	$this->request->onlyAllow('post');
 	$this->Api->recordMap = [
 		'User' => [
@@ -71,7 +73,8 @@ public function api_signup() {
  *
  * @return void
  */
-public function api_login() {
+public function login()
+{
 	$this->request->onlyAllow('post');
 
 	$data = $this->Api->requireParams([

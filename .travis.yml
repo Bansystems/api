@@ -23,7 +23,7 @@ matrix:
 
   include:
     - php: 7.0
-      env: PHPCS=1 DEFAULT=0
+      env: CODECOVERAGE=1 DEFAULT=0
 
     - php: hhvm
       env: HHVM=1 DB=sqlite db_dsn='sqlite:///:memory:'

@@ -193,12 +193,14 @@ class ApiComponentTest extends TestCase {
 		$this->Api->expects($this->once())
 			->method('isApiRequest')
 			->will($this->returnValue(true));
+		/*
 		$this->Api->expects($this->once())
 			->method('_getDbLog')
 			->will($this->returnValue('testDbLog'));
 		$this->Api->expects($this->once())
 			->method('setResponse')
 			->with('dbLog', 'testDbLog');
+		 */
 		$this->Api->expects($this->once())
 			->method('getResponse')
 			->will($this->returnValue([

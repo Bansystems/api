@@ -4,6 +4,7 @@ namespace Api\Error;
 
 use Cake\Network\Response;
 use Cake\Core\Configure;
+use Cake\Error\PHP7ErrorException;
 
 class ApiExceptionRenderer {
 
@@ -42,10 +43,13 @@ class ApiExceptionRenderer {
 			$errorCode = $statusCode;
 		}
 
+		$trace = $this->exception instanceof PHP7ErrorException ?
+			$this->exception->getError()->getTraceAsString() :
+			$this->exception->getTraceAsString();
 		if (Configure::read('debug') && $errorCode == ApiError::UNKNOWN) {
 			$params['debug'] = [
 				'message' => $this->exception->getMessage(),
-				'trace' => explode("\n", $this->exception->getTraceAsString()),
+				'trace' => explode("\n", $trace),
 			];
 		}
 
